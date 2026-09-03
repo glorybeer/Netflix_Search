@@ -50,7 +50,6 @@ def fetch_kmrb_rating(title):
     if not cleaned:
         cleaned = title
 
-    # ==================== API 호출 위치 (여기서 절대 변경) ====================
     url = "https://apis.data.go.kr/B551008/irating_v1/ir_search"
 
     params = {
@@ -58,7 +57,8 @@ def fetch_kmrb_rating(title):
         "title": cleaned,
         "numOfRows": 1,
         "pageNo": 1,
-        "_type": "json"
+        "_type": "json",
+        "corpNm": "넷플릭스서비시스코리아 유한회사"   # <--- 넷플릭스만 고정!
     }
 
     max_retries = 3
@@ -136,7 +136,7 @@ def build_poster_url(poster_path):
 
 def main():
     log("==================================================")
-    log("🚀 KMRB 넷플릭스 수집기 (최종 디버깅 모드)")
+    log("🚀 KMRB 넷플릭스 수집기 (corpNm 넷플릭스서비시스코리아 유한회사 고정 버전)")
     log("==================================================")
 
     if not TMDB_API_KEY or not KMRB_API_KEY:
