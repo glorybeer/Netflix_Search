@@ -27,7 +27,7 @@ DATASET_FILE = 'kmrb_full_dataset.json'
 
 # API 엔드포인트
 TMDB_BASE = 'https://api.themoviedb.org/3'
-KMRB_BASE = 'https://www.kmrb.or.kr/OpenAPI/openapi'
+KMRB_BASE = 'https://apis.data.go.kr/B551008/video_v2'
 
 class DataCollector:
     def __init__(self):
