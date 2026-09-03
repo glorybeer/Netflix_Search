@@ -49,12 +49,13 @@ def clean_title_text(title):
     return text.strip()
 
 def fetch_kmrb_rating(title):
-    """영등위(KMRB) Open API 조회 (403 에러 방지 및 상세 로그 출력)"""
+    """영등위(KMRB) Open API 조회 (HTTPS 적용 및 재시도 로직 강화)"""
     cleaned = clean_title_text(title)
     if not cleaned:
         cleaned = title
 
-    url = "http://apis.data.go.kr/B551014/videoInfoService/getVideoInfoSearch"
+    # HTTP(80포트) 대신 HTTPS(443포트) 사용하여 ConnectTimeoutError 방지
+    url = "https://apis.data.go.kr/B551014/videoInfoService/getVideoInfoSearch"
     
     params = {
         "serviceKey": KMRB_API_KEY,
@@ -64,50 +65,63 @@ def fetch_kmrb_rating(title):
         "_type": "json"
     }
 
-    try:
-        req = requests.Request('GET', url, params=params, headers=HEADERS).prepare()
-        req.url = req.url.replace('%25', '%')
-        
-        session = requests.Session()
-        res = session.send(req, timeout=5)
-
-        if res.status_code == 200:
-            data = res.json()
-            items = data.get('response', {}).get('body', {}).get('items', {}).get('item')
+    # 타임아웃 발생 시 최대 3회 재시도
+    max_retries = 3
+    for attempt in range(1, max_retries + 1):
+        try:
+            req = requests.Request('GET', url, params=params, headers=HEADERS).prepare()
+            req.url = req.url.replace('%25', '%')
             
-            if items:
-                item = items[0] if isinstance(items, list) else items
-                
-                def parse_val(v):
-                    if not v: return 0
-                    val_str = str(v).strip()
-                    if val_str in ['3', '높음']: return 3
-                    if val_str in ['2', '다소높음']: return 2
-                    if val_str in ['1', '낮음']: return 1
-                    return 0
+            session = requests.Session()
+            # 시도 횟수에 따라 타임아웃 시간 증가 (5초 -> 8초 -> 10초)
+            timeout_sec = 5 + (attempt - 1) * 3
+            res = session.send(req, timeout=timeout_sec)
 
-                scores = {
-                    'theme': parse_val(item.get('theme')),
-                    'sensuality': parse_val(item.get('sensuality')),
-                    'violence': parse_val(item.get('violence')),
-                    'dialogue': parse_val(item.get('dialogue')),
-                    'horror': parse_val(item.get('horror')),
-                    'drug': parse_val(item.get('drug')),
-                    'imitation': parse_val(item.get('imitation'))
-                }
-                return scores, True
+            if res.status_code == 200:
+                data = res.json()
+                items = data.get('response', {}).get('body', {}).get('items', {}).get('item')
+                
+                if items:
+                    item = items[0] if isinstance(items, list) else items
+                    
+                    def parse_val(v):
+                        if not v: return 0
+                        val_str = str(v).strip()
+                        if val_str in ['3', '높음']: return 3
+                        if val_str in ['2', '다소높음']: return 2
+                        if val_str in ['1', '낮음']: return 1
+                        return 0
+
+                    scores = {
+                        'theme': parse_val(item.get('theme')),
+                        'sensuality': parse_val(item.get('sensuality')),
+                        'violence': parse_val(item.get('violence')),
+                        'dialogue': parse_val(item.get('dialogue')),
+                        'horror': parse_val(item.get('horror')),
+                        'drug': parse_val(item.get('drug')),
+                        'imitation': parse_val(item.get('imitation'))
+                    }
+                    return scores, True
+                else:
+                    return {'theme': 0, 'sensuality': 0, 'violence': 0, 'dialogue': 0, 'horror': 0, 'drug': 0, 'imitation': 0}, False
             else:
-                return {'theme': 0, 'sensuality': 0, 'violence': 0, 'dialogue': 0, 'horror': 0, 'drug': 0, 'imitation': 0}, False
-        else:
-            log(f"    ⚠️ KMRB HTTP {res.status_code} 오류 ({title})")
-    except Exception as e:
-        log(f"    ⚠️ KMRB 예외 발생 ({title}): {e}")
+                log(f"    ⚠️ KMRB HTTP {res.status_code} 오류 ({title})")
+                break
+        except requests.exceptions.Timeout:
+            if attempt < max_retries:
+                log(f"    ⏳ KMRB 접속 지연 ({title}) - {attempt}회차 재시도 중...")
+                time.sleep(1)
+            else:
+                log(f"    ❌ KMRB 타임아웃 초과 ({title}): 3회 재시도 실패")
+        except Exception as e:
+            log(f"    ⚠️ KMRB 예외 발생 ({title}): {e}")
+            break
 
     return {'theme': 0, 'sensuality': 0, 'violence': 0, 'dialogue': 0, 'horror': 0, 'drug': 0, 'imitation': 0}, False
 
 def main():
     log("==================================================")
-    log("🚀 KMRB 넷플릭스 수집기 (실시간 진행 상황 모니터링)")
+    log("🚀 KMRB 넷플릭스 수집기 (HTTPS 및 재시도 보완 버전)")
     log("==================================================")
 
     if not TMDB_API_KEY or not KMRB_API_KEY:
@@ -165,7 +179,7 @@ def main():
                     match_status = "✅ KMRB 매칭 성공" if is_matched else "⚠️ 기본값(0) 적용"
                     score_str = f"주제:{scores['theme']} 선정:{scores['sensuality']} 폭력:{scores['violence']}"
                     log(f"  [{idx}/{len(results)}] 🎬 '{title}' ({match_status}) -> {score_str} | (총 누적: {len(dataset)}개)")
-                    time.sleep(0.05)
+                    time.sleep(0.1) # 서버 차단 방지 간격
             
             progress['last_movie_page'] = page
             save_json(DATASET_FILE, dataset)
@@ -217,7 +231,7 @@ def main():
                     match_status = "✅ KMRB 매칭 성공" if is_matched else "⚠️ 기본값(0) 적용"
                     score_str = f"주제:{scores['theme']} 선정:{scores['sensuality']} 폭력:{scores['violence']}"
                     log(f"  [{idx}/{len(results)}] 📺 '{title}' ({match_status}) -> {score_str} | (총 누적: {len(dataset)}개)")
-                    time.sleep(0.05)
+                    time.sleep(0.1)
 
             progress['last_tv_page'] = page
             save_json(DATASET_FILE, dataset)
