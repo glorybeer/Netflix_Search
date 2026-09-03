@@ -9,13 +9,11 @@ from urllib.parse import unquote
 TMDB_API_KEY = os.environ.get('TMDB_API_KEY', '')
 RAW_KMRB_API_KEY = os.environ.get('KMRB_API_KEY', '')
 
-# KMRB 공공데이터포털 서비스키 (unquote 처리)
 KMRB_API_KEY = unquote(RAW_KMRB_API_KEY) if RAW_KMRB_API_KEY else ''
 
 DATASET_FILE = 'kmrb_full_dataset.json'
 PROGRESS_FILE = 'collection_progress.json'
 
-# 회차당 수집 페이지 수 (영화/TV 각 20페이지)
 PAGES_PER_RUN = 20
 
 HEADERS = {
@@ -48,12 +46,11 @@ def clean_title_text(title):
 
 
 def fetch_kmrb_rating(title):
-    """영등위(KMRB) Open API 조회 - 넷플릭스만 목표"""
     cleaned = clean_title_text(title)
     if not cleaned:
         cleaned = title
 
-    url = "https://apis.data.go.kr/B551008/irating_v1/ir_search"   # 영등위 차채등급분류 API 주소 반영
+    url = "https://apis.data.go.kr/B551008/irating_v1/ir_search"
 
     params = {
         "serviceKey": KMRB_API_KEY,
@@ -114,7 +111,7 @@ def fetch_kmrb_rating(title):
                     return {'theme': 0, 'sensuality': 0, 'violence': 0, 'dialogue': 0,
                             'horror': 0, 'drug': 0, 'imitation': 0}, False
             else:
-                log(f"    ⚠️ KMRB HTTP {res.status_code} 오류 ({title})")
+                log(f"    ⚠️ KMRB HTTP {res.status_code} 오류 ({title}) - 본문: {res.text[:500]}")
                 break
         except requests.exceptions.Timeout:
             if attempt < max_retries:
@@ -138,7 +135,7 @@ def build_poster_url(poster_path):
 
 def main():
     log("==================================================")
-    log("🚀 KMRB 넷플릭스 수집기 (영등위 API 주소 반영 버전)")
+    log("🚀 KMRB 넷플릭스 수집기 (디버깅 모드 - 최종 버전)")
     log("==================================================")
 
     if not TMDB_API_KEY or not KMRB_API_KEY:
