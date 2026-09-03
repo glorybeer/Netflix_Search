@@ -23,13 +23,17 @@ HEADERS = {
     "Accept": "application/json"
 }
 
+def log(msg):
+    """실시간으로 GitHub Actions 콘솔에 출력을 강제 배출(flush)하는 함수"""
+    print(msg, flush=True)
+
 def load_json(filepath, default):
     if os.path.exists(filepath):
         try:
             with open(filepath, 'r', encoding='utf-8') as f:
                 return json.load(f)
         except Exception as e:
-            print(f"⚠️ {filepath} 읽기 실패: {e}")
+            log(f"⚠️ {filepath} 읽기 실패: {e}")
     return default
 
 def save_json(filepath, data):
@@ -95,19 +99,19 @@ def fetch_kmrb_rating(title):
             else:
                 return {'theme': 0, 'sensuality': 0, 'violence': 0, 'dialogue': 0, 'horror': 0, 'drug': 0, 'imitation': 0}, False
         else:
-            print(f"    ⚠️ KMRB HTTP {res.status_code} 오류 ({title})")
+            log(f"    ⚠️ KMRB HTTP {res.status_code} 오류 ({title})")
     except Exception as e:
-        print(f"    ⚠️ KMRB 예외 발생 ({title}): {e}")
+        log(f"    ⚠️ KMRB 예외 발생 ({title}): {e}")
 
     return {'theme': 0, 'sensuality': 0, 'violence': 0, 'dialogue': 0, 'horror': 0, 'drug': 0, 'imitation': 0}, False
 
 def main():
-    print("==================================================")
-    print("🚀 KMRB 넷플릭스 수집기 (실시간 진행 상황 모니터링)")
-    print("==================================================")
+    log("==================================================")
+    log("🚀 KMRB 넷플릭스 수집기 (실시간 진행 상황 모니터링)")
+    log("==================================================")
 
     if not TMDB_API_KEY or not KMRB_API_KEY:
-        print("❌ Error: GitHub Secrets에 TMDB_API_KEY 또는 KMRB_API_KEY가 설정되지 않았습니다.")
+        log("❌ Error: GitHub Secrets에 TMDB_API_KEY 또는 KMRB_API_KEY가 설정되지 않았습니다.")
         return
 
     progress = load_json(PROGRESS_FILE, {'last_movie_page': 0, 'last_tv_page': 0})
@@ -117,13 +121,13 @@ def main():
     last_movie_p = progress.get('last_movie_page', 0)
     last_tv_p = progress.get('last_tv_page', 0)
 
-    print(f"📊 현재 누적 수집 작품 수: {len(dataset)}개")
-    print(f"📍 진행 위치 기록 -> MOVIE: {last_movie_p}p / TV: {last_tv_p}p")
+    log(f"📊 현재 누적 수집 작품 수: {len(dataset)}개")
+    log(f"📍 진행 위치 기록 -> MOVIE: {last_movie_p}p / TV: {last_tv_p}p")
 
     # 1. MOVIE 수집
     movie_target_end = last_movie_p + PAGES_PER_RUN
-    print(f"\n🎬 [MOVIE] 카테고리 수집 시작 ({last_movie_p + 1}p ~ {movie_target_end}p)")
-    print("-" * 50)
+    log(f"\n🎬 [MOVIE] 카테고리 수집 시작 ({last_movie_p + 1}p ~ {movie_target_end}p)")
+    log("-" * 50)
     
     for page in range(last_movie_p + 1, movie_target_end + 1):
         tmdb_url = f"https://api.themoviedb.org/3/discover/movie?api_key={TMDB_API_KEY}&with_watch_providers=8&watch_region=KR&language=ko-KR&page={page}"
@@ -131,15 +135,15 @@ def main():
             res = requests.get(tmdb_url, headers=HEADERS, timeout=5).json()
             results = res.get('results', [])
             if not results:
-                print(f"  - [{page}p] 영화 수집 완료 (더 이상 데이터 없음)")
+                log(f"  - [{page}p] 영화 수집 완료 (더 이상 데이터 없음)")
                 break
 
-            print(f"\n📄 MOVIE {page}/{movie_target_end} 페이지 처리 중 (작품 수: {len(results)}개)")
+            log(f"\n📄 MOVIE {page}/{movie_target_end} 페이지 처리 중 (작품 수: {len(results)}개)")
             new_added_in_page = 0
 
             for idx, item in enumerate(results, 1):
                 if item['id'] in existing_ids:
-                    print(f"  [{idx}/{len(results)}] ⏩ 중복 건너뜀: {item.get('title')}")
+                    log(f"  [{idx}/{len(results)}] ⏩ 중복 건너뜀: {item.get('title')}")
                     continue
 
                 title = item.get('title')
@@ -160,22 +164,22 @@ def main():
 
                     match_status = "✅ KMRB 매칭 성공" if is_matched else "⚠️ 기본값(0) 적용"
                     score_str = f"주제:{scores['theme']} 선정:{scores['sensuality']} 폭력:{scores['violence']}"
-                    print(f"  [{idx}/{len(results)}] 🎬 '{title}' ({match_status}) -> {score_str} | (총 누적: {len(dataset)}개)")
+                    log(f"  [{idx}/{len(results)}] 🎬 '{title}' ({match_status}) -> {score_str} | (총 누적: {len(dataset)}개)")
                     time.sleep(0.05)
             
             progress['last_movie_page'] = page
             save_json(DATASET_FILE, dataset)
             save_json(PROGRESS_FILE, progress)
-            print(f"  --> MOVIE {page}p 저장 완료 (+{new_added_in_page}개 추가됨)")
+            log(f"  --> MOVIE {page}p 저장 완료 (+{new_added_in_page}개 추가됨)")
 
         except Exception as e:
-            print(f"  ❌ MOVIE {page}p 처리 중 에러 발생: {e}")
+            log(f"  ❌ MOVIE {page}p 처리 중 에러 발생: {e}")
             break
 
     # 2. TV 수집
     tv_target_end = last_tv_p + PAGES_PER_RUN
-    print(f"\n📺 [TV] 카테고리 수집 시작 ({last_tv_p + 1}p ~ {tv_target_end}p)")
-    print("-" * 50)
+    log(f"\n📺 [TV] 카테고리 수집 시작 ({last_tv_p + 1}p ~ {tv_target_end}p)")
+    log("-" * 50)
     
     for page in range(last_tv_p + 1, tv_target_end + 1):
         tmdb_url = f"https://api.themoviedb.org/3/discover/tv?api_key={TMDB_API_KEY}&with_watch_providers=8&watch_region=KR&language=ko-KR&page={page}"
@@ -183,15 +187,15 @@ def main():
             res = requests.get(tmdb_url, headers=HEADERS, timeout=5).json()
             results = res.get('results', [])
             if not results:
-                print(f"  - [{page}p] TV 수집 완료 (더 이상 데이터 없음)")
+                log(f"  - [{page}p] TV 수집 완료 (더 이상 데이터 없음)")
                 break
 
-            print(f"\n📄 TV {page}/{tv_target_end} 페이지 처리 중 (작품 수: {len(results)}개)")
+            log(f"\n📄 TV {page}/{tv_target_end} 페이지 처리 중 (작품 수: {len(results)}개)")
             new_added_in_page = 0
 
             for idx, item in enumerate(results, 1):
                 if item['id'] in existing_ids:
-                    print(f"  [{idx}/{len(results)}] ⏩ 중복 건너뜀: {item.get('name')}")
+                    log(f"  [{idx}/{len(results)}] ⏩ 중복 건너뜀: {item.get('name')}")
                     continue
 
                 title = item.get('name')
@@ -212,21 +216,21 @@ def main():
 
                     match_status = "✅ KMRB 매칭 성공" if is_matched else "⚠️ 기본값(0) 적용"
                     score_str = f"주제:{scores['theme']} 선정:{scores['sensuality']} 폭력:{scores['violence']}"
-                    print(f"  [{idx}/{len(results)}] 📺 '{title}' ({match_status}) -> {score_str} | (총 누적: {len(dataset)}개)")
+                    log(f"  [{idx}/{len(results)}] 📺 '{title}' ({match_status}) -> {score_str} | (총 누적: {len(dataset)}개)")
                     time.sleep(0.05)
 
             progress['last_tv_page'] = page
             save_json(DATASET_FILE, dataset)
             save_json(PROGRESS_FILE, progress)
-            print(f"  --> TV {page}p 저장 완료 (+{new_added_in_page}개 추가됨)")
+            log(f"  --> TV {page}p 저장 완료 (+{new_added_in_page}개 추가됨)")
 
         except Exception as e:
-            print(f"  ❌ TV {page}p 처리 중 에러 발생: {e}")
+            log(f"  ❌ TV {page}p 처리 중 에러 발생: {e}")
             break
 
-    print("\n==================================================")
-    print(f"🎉 수집 회차 완료! 최종 저장된 데이터: {len(dataset)}개")
-    print("==================================================")
+    log("\n==================================================")
+    log(f"🎉 수집 회차 완료! 최종 저장된 데이터: {len(dataset)}개")
+    log("==================================================")
 
 if __name__ == "__main__":
     main()
