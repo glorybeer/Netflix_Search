@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Netflix KMRB 필터 - 영등위 7대 성향으로 검색</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
+        
+        * {
+            font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+        }
+        
+        .grade-all { @apply bg-gray-500; }
+        .grade-12 { @apply bg-green-500; }
+        .grade-15 { @apply bg-yellow-500; }
+        .grade-18 { @apply bg-red-500; }
+        
+        .intensity-badge {
+            @apply inline-block px-2 py-1 rounded text-xs font-bold text-white;
+        }
+        .intensity-none { @apply bg-gray-500; }
+        .intensity-low { @apply bg-blue-500; }
+        .intensity-medium { @apply bg-yellow-500; }
+        .intensity-high { @apply bg-red-500; }
+        
+        .loading-spinner {
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top: 3px solid white;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .filter-sidebar {
+            max-height: calc(100vh - 100px);
+            overflow-y: auto;
+        }
+        
+        @media (max-width: 768px) {
+            .filter-sidebar {
+                position: fixed;
+                bottom: 0;
+                left: 0;
+                right: 0;
+                max-height: 70vh;
+                border-radius: 20px 20px 0 0;
+                z-index: 40;
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-100">
+    <!-- 로딩 화면 -->
+    <div id="loadingScreen" class="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50">
+        <div class="text-center">
+            <div class="loading-spinner mx-auto mb-4"></div>
+            <p class="text-xl">데이터 로드 중...</p>
+            <p class="text-sm text-gray-400 mt-2">KMRB Netflix 필터 데이터를 불러오는 중입니다.</p>
+        </div>
+    </div>
+
+    <div class="min-h-screen bg-gray-900">
+        <!-- 헤더 -->
+        <header class="bg-black border-b border-gray-800 sticky top-0 z-30">
+            <div class="max-w-full px-4 py-4">
+                <h1 class="text-3xl font-bold text-red-600">🎬 Netflix KMRB 필터</h1>
+                <p class="text-gray-400 text-sm mt-1">영등위 7대 성향으로 영상 검색하기</p>
+            </div>
+        </header>
+
+        <div class="flex flex-col lg:flex-row max-w-full">
+            <!-- 데스크톱 필터 사이드바 -->
+            <aside id="filterSidebar" class="hidden lg:block lg:w-80 bg-gray-800 border-r border-gray-700 p-6 filter-sidebar">
+                <div class="space-y-6">
+                    <!-- 키워드 검색 -->
+                    <div>
+                        <label class="block text-sm font-bold mb-3">🔍 키워드 검색</label>
+                        <input 
+                            type="text" 
+                            id="keywordFilter" 
+                            placeholder="제목으로 검색..."
+                            class="w-full px-4 py-2 bg-gray-700 text-white rounded border border-gray-600 focus:outline-none focus:border-red-600"
+                        >
+                    </div>
+
+                    <!-- 연령 등급 -->
+                    <div>
+                        <label class="block text-sm font-bold mb-3">📺 연령 등급</label>
+                        <div class="space-y-2">
+                            <label class="flex items-center">
+                                <input type="checkbox" class="grade-filter" value="All" checked>
+                                <span class="intensity-badge grade-all ml-2">전체 이용가</span>
+                            </label>
+                            <label class="flex items-center">
+                                <input type="checkbox" class="grade-filter" value="12">
+                                <span class="intensity-badge grade-12 ml-2">12세이상</span>
+                            </label>
+                            <label class="flex items-center">
+                                <input type="checkbox" class="grade-filter" value="15">
+                                <span class="intensity-badge grade-15 ml-2">15세이상</span>
+                            </label>
+                            <label class="flex items-center">
+                                <input type="checkbox" class="grade-filter" value="18">
+                                <span class="intensity-badge grade-18 ml-2">18세이상</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- 장르 -->
+                    <div>
+                        <label class="block text-sm font-bold mb-3">🎭 장르</label>
+                        <div id="genreContainer" class="space-y-2">
+                            <!-- 동적으로 생성됨 -->
+                        </div>
+                    </div>
+
+                    <!-- 영등위 7대 성향 슬라이더 -->
+                    <div class="space-y-4">
+                        <label class="block text-sm font-bold">⚠️  영등위 7대 성향</label>
+                        
+                        <div>
+                            <label class="flex justify-between text-xs mb-2">
+                                <span>📖 주제</span>
+                                <span id="themesValue">-1</span>
+                            </label>
+                            <input type="range" id="themesSlider" min="-1" max="3" value="-1" class="w-full h-2 bg-gray-700 rounded-lg cursor-pointer">
+                        </div>
+
+                        <div>
+                            <label class="flex justify-between text-xs mb-2">
+                                <span>💋 선정성</span>
+                                <span id="sexualityValue">-1</span>
+                            </label>
+                            <input type="range" id="sexualitySlider" min="-1" max="3" value="-1" class="w-full h-2 bg-gray-700 rounded-lg cursor-pointer">
+                        </div>
+
+                        <div>
+                            <label class="flex justify-between text-xs mb-2">
+                                <span>💥 폭력성</span>
+                                <span id="violenceValue">-1</span>
+                            </label>
+                            <input type="range" id="violenceSlider" min="-1" max="3" value="-1" class="w-full h-2 bg-gray-700 rounded-lg cursor-pointer">
+                        </div>
+
+                        <div>
+                            <label class="flex justify-between text-xs mb-2">
+                                <span>💬 대사</span>
+                                <span id="languageValue">-1</span>
+                            </label>
+                            <input type="range" id="languageSlider" min="-1" max="3" value="-1" class="w-full h-2 bg-gray-700 rounded-lg cursor-pointer">
+                        </div>
+
+                        <div>
+                            <label class="flex justify-between text-xs mb-2">
+                                <span>👻 공포</span>
+                                <span id="fearValue">-1</span>
+                            </label>
+                            <input type="range" id="fearSlider" min="-1" max="3" value="-1" class="w-full h-2 bg-gray-700 rounded-lg cursor-pointer">
+                        </div>
+
+                        <div>
+                            <label class="flex justify-between text-xs mb-2">
+                                <span>💊 약물</span>
+                                <span id="drugsValue">-1</span>
+                            </label>
+                            <input type="range" id="drugsSlider" min="-1" max="3" value="-1" class="w-full h-2 bg-gray-700 rounded-lg cursor-pointer">
+                        </div>
+
+                        <div>
+                            <label class="flex justify-between text-xs mb-2">
+                                <span>🔪 모방위험</span>
+                                <span id="imitationValue">-1</span>
+                            </label>
+                            <input type="range" id="imitationSlider" min="-1" max="3" value="-1" class="w-full h-2 bg-gray-700 rounded-lg cursor-pointer">
+                        </div>
+                    </div>
+
+                    <!-- 리셋 버튼 -->
+                    <button onclick="resetFilters()" class="w-full bg-red-600 hover:bg-red-700 px-4 py-2 rounded font-bold transition">
+                        🔄 필터 초기화
+                    </button>
+
+                    <!-- 로컬 파일 업로드 (테스트용) -->
+                    <div class="pt-4 border-t border-gray-700">
+                        <label class="block text-xs text-gray-400 mb-2">📁 JSON 파일 수동 업로드 (테스트용)</label>
+                        <input type="file" id="jsonUpload" accept=".json" class="w-full text-xs">
+                    </div>
+                </div>
+            </aside>
+
+            <!-- 메인 콘텐츠 -->
+            <main class="flex-1 p-6">
+                <!-- 결과 통계 -->
+                <div class="mb-6 bg-gray-800 rounded-lg p-4">
+                    <p class="text-gray-300">
+                        검색 결과: <span id="resultCount" class="font-bold text-red-500">0</span>개 
+                        <span class="text-gray-500 text-sm ml-4" id="loadTime"></span>
+                    </p>
+                </div>
+
+                <!-- 콘텐츠 그리드 -->
+                <div id="contentGrid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                    <!-- 동적으로 생성됨 -->
+                </div>
+
+                <!-- 빈 상태 -->
+                <div id="emptyState" class="hidden text-center py-20">
+                    <p class="text-3xl mb-4">😕</p>
+                    <p class="text-gray-400 text-lg">검색 결과가 없습니다.</p>
+                    <p class="text-gray-500 text-sm mt-2">필터를 조정하고 다시 시도해보세요.</p>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <!-- 모바일 필터 버튼 -->
+    <button id="mobileFilterBtn" class="lg:hidden fixed bottom-6 right-6 bg-red-600 hover:bg-red-700 text-white rounded-full w-14 h-14 flex items-center justify-center shadow-lg z-20 font-bold text-xl">
+        ⚙️
+    </button>
+
+    <!-- 모바일 필터 팝업 -->
+    <div id="mobileFilterModal" class="hidden lg:hidden fixed inset-0 bg-black bg-opacity-50 z-40">
+        <div class="filter-sidebar bg-gray-800 rounded-t-3xl absolute bottom-0 left-0 right-0 p-6 max-h-[70vh]">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-xl font-bold">필터 설정</h2>
+                <button onclick="closeMobileFilter()" class="text-2xl">✕</button>
+            </div>
+            <div id="mobileFilterContent"></div>
+        </div>
+    </div>
+
+    <script>
+        // 전역 데이터
+        let allContent = { movies: [], tv: [] };
+        const GENRE_MAP = {
+            28: '액션', 12: '모험', 16: '애니메이션', 35: '코미디',
+            80: '범죄', 99: '다큐멘터리', 18: '드라마', 10751: '가족',
+            14: '판타지', 36: '역사', 27: '공포', 10402: '음악',
+            9648: '미스터리', 10749: '로맨스', 878: 'SF', 10770: 'TV영화',
+            53: '스릴러', 10752: '전쟁', 37: '웨스턴'
+        };
+
+        // 데이터 로드
+        async function loadData() {
+            try {
+                const response = await fetch('./kmrb_full_dataset.json');
+                if (!response.ok) throw new Error('데이터 로드 실패');
+                allContent = await response.json();
+                document.getElementById('loadingScreen').classList.add('hidden');
+                initializeFilters();
+                applyFilters();
+            } catch (error) {
+                console.error('데이터 로드 오류:', error);
+                document.getElementById('loadingScreen').innerHTML = `
+                    <div class="text-center">
+                        <p class="text-xl text-red-500 mb-4">❌ 데이터 로드 실패</p>
+                        <p class="text-gray-400 mb-6">아래 파일을 업로드하거나 네트워크를 확인하세요.</p>
+                        <input type="file" id="fallbackUpload" accept=".json" class="mb-4">
+                        <button onclick="handleFallbackUpload()" class="bg-red-600 px-6 py-2 rounded ml-2">업로드</button>
+                    </div>
+                `;
+            }
+        }
+
+        function initializeFilters() {
+            // 장르 필터 생성
+            const genres = new Set();
+            [...allContent.movies, ...allContent.tv].forEach(item => {
+                item.genres?.forEach(g => genres.add(g));
+            });
+
+            const genreContainer = document.getElementById('genreContainer');
+            Array.from(genres).sort().forEach(genreId => {
+                const label = document.createElement('label');
+                label.className = 'flex items-center';
+                label.innerHTML = `
+                    <input type="checkbox" class="genre-filter" value="${genreId}">
+                    <span class="ml-2">${GENRE_MAP[genreId] || `장르 ${genreId}`}</span>
+                `;
+                genreContainer.appendChild(label);
+            });
+
+            // 이벤트 리스너
+            document.getElementById('keywordFilter').addEventListener('input', applyFilters);
+            document.querySelectorAll('.grade-filter, .genre-filter').forEach(el => {
+                el.addEventListener('change', applyFilters);
+            });
+            document.querySelectorAll('[id$="Slider"]').forEach(el => {
+                el.addEventListener('input', (e) => {
+                    const name = e.target.id.replace('Slider', '');
+                    document.getElementById(name + 'Value').textContent = e.target.value;
+                    applyFilters();
+                });
+            });
+            document.getElementById('jsonUpload').addEventListener('change', handleJsonUpload);
+            document.getElementById('mobileFilterBtn').addEventListener('click', openMobileFilter);
+        }
+
+        function applyFilters() {
+            const keyword = document.getElementById('keywordFilter').value.toLowerCase();
+            const selectedGrades = Array.from(document.querySelectorAll('.grade-filter:checked')).map(el => el.value);
+            const selectedGenres = Array.from(document.querySelectorAll('.genre-filter:checked')).map(el => parseInt(el.value));
+            
+            const intensities = {
+                themes: parseInt(document.getElementById('themesSlider').value),
+                sexuality: parseInt(document.getElementById('sexualitySlider').value),
+                violence: parseInt(document.getElementById('violenceSlider').value),
+                language: parseInt(document.getElementById('languageSlider').value),
+                fear: parseInt(document.getElementById('fearSlider').value),
+                drugs: parseInt(document.getElementById('drugsSlider').value),
+                imitation: parseInt(document.getElementById('imitationSlider').value)
+            };
+
+            const startTime = performance.now();
+            
+            const filtered = [...allContent.movies, ...allContent.tv].filter(item => {
+                // 키워드 필터
+                if (keyword && !item.title?.toLowerCase().includes(keyword)) return false;
+
+                // 등급 필터
+                const grade = item.kmrb?.grade || 'All';
+                if (selectedGrades.length > 0 && !selectedGrades.includes(grade)) return false;
+
+                // 장르 필터
+                if (selectedGenres.length > 0) {
+                    if (!item.genres?.some(g => selectedGenres.includes(g))) return false;
+                }
+
+                // 성향 필터
+                if (item.kmrb) {
+                    for (const [key, value] of Object.entries(intensities)) {
+                        if (value >= 0) {
+                            const itemValue = item.kmrb[key] ?? -1;
+                            if (itemValue < value) return false;
+                        }
+                    }
+                }
+
+                return true;
+            });
+
+            const endTime = performance.now();
+            renderGrid(filtered);
+            
+            document.getElementById('resultCount').textContent = filtered.length;
+            document.getElementById('loadTime').textContent = `(${(endTime - startTime).toFixed(1)}ms)`;
+        }
+
+        function renderGrid(items) {
+            const grid = document.getElementById('contentGrid');
+            grid.innerHTML = '';
+
+            if (items.length === 0) {
+                document.getElementById('emptyState').classList.remove('hidden');
+                return;
+            }
+
+            document.getElementById('emptyState').classList.add('hidden');
+
+            items.forEach(item => {
+                const card = document.createElement('div');
+                card.className = 'bg-gray-800 rounded-lg overflow-hidden hover:scale-105 transition transform cursor-pointer';
+                
+                const posterUrl = item.poster_path 
+                    ? `https://image.tmdb.org/t/p/w300${item.poster_path}`
+                    : 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="300" height="450"%3E%3Crect fill="%23333" width="300" height="450"/%3E%3Ctext x="50%" y="50%" text-anchor="middle" dy=".3em" fill="%23999" font-size="20"%3ENo Image%3C/text%3E%3C/svg%3E';
+                
+                const gradeBg = `grade-${item.kmrb?.grade?.replace('세이상', '').replace('세 이상', '') || 'all'}`;
+                
+                card.innerHTML = `
+                    <div class="relative aspect-[2/3] overflow-hidden">
+                        <img src="${posterUrl}" alt="${item.title}" class="w-full h-full object-cover">
+                        ${item.kmrb?.grade ? `<div class="absolute top-2 right-2 intensity-badge ${gradeBg}">${item.kmrb.grade}</div>` : ''}
+                    </div>
+                    <div class="p-3">
+                        <h3 class="font-bold text-sm line-clamp-2">${item.title}</h3>
+                        ${item.kmrb ? `
+                            <div class="grid grid-cols-2 gap-1 mt-2 text-xs">
+                                <span class="intensity-badge ${getIntensityClass(item.kmrb.themes)}">주제 ${item.kmrb.themes}</span>
+                                <span class="intensity-badge ${getIntensityClass(item.kmrb.sexuality)}">선정 ${item.kmrb.sexuality}</span>
+                                <span class="intensity-badge ${getIntensityClass(item.kmrb.violence)}">폭력 ${item.kmrb.violence}</span>
+                                <span class="intensity-badge ${getIntensityClass(item.kmrb.language)}">대사 ${item.kmrb.language}</span>
+                            </div>
+                        ` : ''}
+                        <button onclick='openNetflix("${item.title}")' class="w-full mt-2 bg-red-600 hover:bg-red-700 text-white text-xs py-1 rounded transition">
+                            🎬 넷플릭스 보기
+                        </button>
+                    </div>
+                `;
+                grid.appendChild(card);
+            });
+        }
+
+        function getIntensityClass(value) {
+            if (value === -1 || value === null) return 'intensity-none';
+            if (value <= 1) return 'intensity-low';
+            if (value === 2) return 'intensity-medium';
+            return 'intensity-high';
+        }
+
+        function openNetflix(title) {
+            window.open(`https://www.netflix.com/search?q=${encodeURIComponent(title)}`, '_blank');
+        }
+
+        function resetFilters() {
+            document.getElementById('keywordFilter').value = '';
+            document.querySelectorAll('.grade-filter').forEach(el => el.checked = el.value === 'All');
+            document.querySelectorAll('.genre-filter').forEach(el => el.checked = false);
+            document.querySelectorAll('[id$="Slider"]').forEach(el => {
+                el.value = '-1';
+                document.getElementById(el.id.replace('Slider', '') + 'Value').textContent = '-1';
+            });
+            applyFilters();
+        }
+
+        function openMobileFilter() {
+            document.getElementById('mobileFilterModal').classList.remove('hidden');
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closeMobileFilter() {
+            document.getElementById('mobileFilterModal').classList.add('hidden');
+            document.body.style.overflow = 'auto';
+        }
+
+        function handleJsonUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    allContent = JSON.parse(e.target.result);
+                    applyFilters();
+                    alert('✅ 데이터 업로드 완료!');
+                } catch (error) {
+                    alert('❌ JSON 파일 형식이 올바르지 않습니다.');
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function handleFallbackUpload() {
+            document.getElementById('fallbackUpload').click();
+        }
+
+        // 초기화
+        loadData();
+    </script>
+</body>
+</html>
